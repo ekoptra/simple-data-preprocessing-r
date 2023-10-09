@@ -1,0 +1,570 @@
+---
+title: "Data Preprocessing and Visualization"
+date: "2023-10-09"
+output: 
+  rmdformats::readthedown
+---
+
+
+# Install dan Import Package
+
+```{r, eval=FALSE, warning=FALSE, }
+install.packages("dplyr")
+install.packages("ggplot2")
+install.packages("validate")
+install.packages("GGally")
+install.packages("tidyr")
+install.packages("Hmisc")
+```
+
+```{r, warning=FALSE, message=FALSE}
+library(dplyr)
+library(ggplot2)
+library(validate)
+library("GGally")
+library(tidyr)
+library(Hmisc)
+```
+
+
+# Import Data
+
+Data yang digunakan adalah data bawaan yang tersedia dari package ggplot2 yaitu `msleep`, yaitu waktu tidur beberapa hewan mamalia
+
+```{r}
+data(msleep)
+
+data <- msleep
+
+head(data)
+```
+
+```{r warning=FALSE}
+?msleep
+```
+
+
+# Explore Data
+
+## Melihat Sekilas
+
+Melihat banyaknya baris dan kolom dari data
+```{r}
+dim(data)
+```
+
+```{r}
+nrow(data)
+ncol(data)
+```
+
+Bisa juga menggunakan `glimpse` untuk cek dimensi data sekaligus melihat tipe dari setip variabel
+
+```{r}
+glimpse(data)
+```
+Untuk mengambil nama kolom
+
+```{r}
+colnames(data)
+```
+
+Melihat nilai unik dari suatu variabel
+
+```{r}
+unique(data$order)
+```
+
+Melihat jumlah data untuk setiap kategori pada variabel kategorik
+
+```{r}
+table(data$order)
+```
+
+Melihat statistik dari variabel
+
+```{r}
+print(paste("Rata-rata: ", mean(data$awake, na.rm = TRUE)))
+print(paste("Median:", median(data$awake, na.rm=TRUE)))
+print(paste("Min:", min(data$awake, na.rm=TRUE)))
+print(paste("Max:", max(data$awake, na.rm=TRUE)))
+print(paste("Standar Deviasi:", sd(data$awake, na.rm=TRUE)))
+print(paste("Varians:", var(data$awake, na.rm=TRUE)))
+
+print("Quantile")
+quantile(data$awake, probs = c(0.25, 0.50, 0.80), na.rm = TRUE)
+```
+
+Melihat summary dari data
+
+```{r}
+summary(data)
+```
+
+
+## Check Missing Value
+
+Jumlah missing value secara keseluruhan
+
+```{r}
+sum(is.na(data))
+```
+
+```{r}
+sum(is.na(data$conservation))
+```
+
+Untuk menghitung jumlah missing value untuk setiap variabel dapat menggunakan bantuan fungsi `sapply` untuk melakukan looping setiap variabel
+
+```{r}
+sapply(data, FUN = function(x) sum(is.na(x)))
+```
+
+Untuk memfilter data yang missing bisa menggunakan fungsi `which`
+
+```{r}
+data[which(is.na(data$conservation)),]
+```
+
+
+## Dplyr
+
+Untuk mempermudah explore data digunakan library `dplyr`. Di dplyr terdapat operator pipes `%>%`. Operator pipes akan mengambil output dari operan sebelah kiri dan menggunakannya menjadi argumen pertama pada fungsi yang ada di operan sebelah kanan.
+
+```{r}
+select(data, name, conservation)
+```
+
+
+```{r}
+data %>% select(name, conservation)
+```
+
+Dua perintah diatas menghasilkan output yang sama. Namun perintah kedua lebih mudah dibaca daripada perintah pertama
+
+### Select data
+
+Fungsi `select()` dari dplyr dapat digunakan untuk memilih kolom yang diinginkan
+
+```{r}
+data %>% select(name, sleep_total)
+```
+
+Dapat menggunakan `-` untuk mengecualikan kolom tertentu
+
+```{r}
+data %>% select(-name, -genus)
+```
+
+Bisa mengambil kolom yang berawal kata tertentu menggunakan fungsi `starts_with`
+
+```{r}
+data %>% select(
+  name,
+  starts_with("sleep")
+)
+```
+
+Selain `starts_with` bisa juga menggunakan `ends_with` atau `contains`
+
+### Arrange Data
+
+`arrange()` dapat digunakan untuk mengurutkan data. Secara default akan diurutkan dari yang terkecil ke yang terbesar
+
+```{r}
+data %>% arrange(sleep_total)
+```
+
+Untuk mengurutkan secara descending dapat menggunakan fungsi `desc`
+
+```{r}
+data %>% arrange(vore, desc(sleep_total))
+```
+
+### Filter data
+
+`filter()` dari dplyr mengembalikan data yang memenuhi semua kondisi yang didefinisikan
+
+```{r}
+data %>% filter(
+  sleep_total > 8,
+  vore == "carni"
+)
+```
+
+Bisa menggunakan fungsi `is.na` untuk mengambil/memfilter data yang missing
+
+```{r}
+data %>% filter(
+  sleep_total > 8,
+  vore == "carni",
+  is.na(data$conservation)
+)
+```
+
+Bisa memanggil beberapa fungsi dplyr secara bersamaan dengan menggunakan operator `%>%`
+
+```{r}
+(data 
+ %>% filter(
+    vore %in% c("herbi", "carni"),
+    sleep_total < 3 | sleep_total > 16
+  )  
+ %>% select(name, vore, starts_with("sleep"))
+ %>% arrange(desc(sleep_total)))
+```
+
+### Mutate
+
+`mutate()` dari dplyr dapat digunakan untuk membuat variabel baru
+
+```{r}
+(data 
+  %>% mutate(body_brain_wt = brainwt + bodywt)
+  %>% select(name, ends_with("wt")))
+```
+
+
+Bisa dibuat lebih kompleks. Contohnya menghitung persentase, menghitung zcore atau melakukan scaling data menggunakan minmax scaler
+
+
+```{r}
+(data 
+  %>% mutate(
+    sleep_percent = sleep_total / 24 * 100,
+    awake_percent = 100 - sleep_percent,
+    sleep_total_minmax = (sleep_total - min(sleep_total)) / (max(sleep_total) - min(sleep_total)),
+    sleep_total_zcore = ((sleep_total - mean(sleep_total)) / sd(sleep_total))
+  )
+  %>% select(name, contains("percent"), contains("total"), sleep_percent)
+  %>% arrange(desc(sleep_percent)))
+```
+
+
+### Summary Data
+
+`summarise` dari dplty dapat digunakan untuk melakukan aggregate data
+
+```{r}
+data %>% summarise(
+  avg_sleep = mean(sleep_total),
+  min_sleep = min(sleep_total),
+  max_sleep = max(sleep_total),
+  total_baris = n()
+)
+```
+
+### Groupby Data
+
+Grouping hasil aggregate berdasarkan variabel tertentu
+
+```{r}
+(data 
+  #%>% filter(!is.na(vore))
+  %>% group_by(vore)
+  %>% summarise(
+    avg_sleep = mean(sleep_total),
+    min_sleep = min(sleep_total),
+    max_sleep = max(sleep_total),
+    total_baris = n()
+  )
+ #%>% arrange(desc(avg_sleep))
+)
+```
+
+## Validasi
+
+Melakukan validasi terhadap data berdasarkan rules tertentu yang didefinisikan
+
+```{r}
+rules <- validator(
+  sleep_total + awake == 24,
+  sleep_total > 4 & sleep_total < 15,
+  !is.na(brainwt),
+  if (vore == "omni") sleep_total >= 10
+)
+
+checked <- confront(data, rules)
+
+summary(checked)
+```
+
+```{r}
+plot(checked)
+```
+
+Mengambil data yang melanggar rules tertentu
+
+```{r}
+violating(data, checked[1]) %>%
+    select(name, starts_with("sleep"), awake, brainwt, everything())
+```
+
+Untuk lebih detail bisa cek dokumentasi lengkapnya [https://data-cleaning.github.io/validate/](https://data-cleaning.github.io/validate/)
+
+
+# Data Visualization
+
+ggplot2 is an R package for producing statistical, or data graphics. It is the most modern of the plotting systems. The gg stands for grammar of graphics which aims to break down graphs into component chunks.
+
+Here are some general visualizations, for more details please see this notebook [https://www.kaggle.com/code/benroshan/part-4-data-visualization-with-r#Bar-Chart](https://www.kaggle.com/code/benroshan/part-4-data-visualization-with-r#Bar-Chart)
+
+## Scatter Plot
+
+```{r}
+(data 
+  %>% ggplot(aes(x=sleep_rem, y = sleep_cycle))
+  + geom_point(shape = 22, color = "blue", fill = "red", size = 2)
+)
+```
+
+Menambahkan garis regresi dan mewarnai titik berdasarkan variabel lain
+
+```{r}
+(data 
+  %>% ggplot(aes(x=sleep_rem, y = sleep_cycle))
+  + geom_point(aes(color=vore))
+  + geom_smooth(method = lm)
+)
+```
+
+
+## Barchart
+
+```{r}
+(data
+  %>% ggplot()
+  + geom_bar(aes(x=vore), fill='orange')
+)
+```
+
+Stack horizontal barchart dengan label
+
+```{r}
+(data
+  %>% filter(!is.na(vore))
+  %>% mutate(sleep_more_16_hours = sleep_total > 16)
+  %>% ggplot(aes(x=vore, fill=sleep_more_16_hours))
+  + geom_bar()
+  + coord_flip()
+  + theme(legend.position = "bottom")
+ + geom_text(stat = "count", aes(label=stat(count)))
+)
+```
+
+
+## Histogram
+
+```{r}
+data %>%
+  ggplot(aes(x=sleep_total)) +
+  geom_histogram()
+```
+
+Mewarnai histrogram berdasarkan kondisi tertentu
+
+```{r}
+data %>%
+  ggplot(aes(x=sleep_total)) +
+  geom_histogram(aes(fill= vore == "carni"), binwidth = 0.5)
+```
+
+
+## Density Plot
+
+
+
+```{r}
+data %>%
+  ggplot(aes(x=sleep_total)) +
+  geom_density(fill="pink") +
+  theme_classic()
+```
+
+Membagi density plot berdasarkan variabel tertentu
+
+```{r}
+data %>%
+  ggplot(aes(x=sleep_total)) +
+  geom_density(aes(fill=vore), alpha=0.5) +
+  theme_classic()
+```
+
+
+## Boxplot
+
+```{r}
+data %>%
+  ggplot(aes(y=sleep_total)) +
+  geom_boxplot()
+```
+
+Memecah boxplot berdasarkan variabel tertentu
+
+```{r}
+data %>%
+  ggplot(aes(y=sleep_total)) +
+  geom_boxplot(aes(x=vore, color=vore)) +
+  theme_minimal()
+```
+
+
+## Correlation Matrix
+
+```{r}
+ggcorr(data,  method = c("pairwise", "pearson"), label=TRUE, legend.position = "bottom")
+```
+
+```{r warning=FALSE}
+data %>%
+  select(contains("sleep")) %>%
+  ggpairs()
+```
+
+# Handle Missing Data
+
+## Jumlah Missing Data
+
+Cek jumlah dan missing data. Agar kodingannya bisa dipakai berulang dibuatkan fungsi tertentu yaitu `jumlahMissing` dan `persentaseMissing`
+
+```{r}
+jumlahMissing <- function(df){
+  sapply(df, FUN = function(x) sum(is.na(x)))
+}
+
+persentaseMissing <- function(df){
+  sapply(df, FUN = function(x) sum(is.na(x)) / nrow(df) * 100 )
+}
+```
+
+
+```{r}
+jumlahMissing(data)
+```
+
+```{r}
+persentaseMissing(data)
+```
+
+## Menghapus Missing Data
+
+```{r}
+dropped_na <- drop_na(data)
+jumlahMissing(dropped_na)
+```
+
+Baris yang minimal terdapat 1 kolomnya missing value akan terhapus
+
+```{r}
+dropped_na
+```
+
+Menghapus data yang terdapat missing value pada variabel tertentu
+
+```{r}
+dropped_na <- drop_na(data, vore)
+jumlahMissing(dropped_na)
+```
+
+
+## Replace With Some Value
+
+```{r}
+data$sleep_rem
+```
+
+Imputasi menggunakan nilai tertentu
+
+```{r}
+impute(data$sleep_rem, 0)
+```
+
+Imputasi menggunakan rata-rata, median, dsb
+
+```{r}
+impute(data$sleep_rem, mean(data$sleep_rem, na.rm = TRUE))
+```
+
+```{r}
+impute(data$sleep_rem, median(data$sleep_rem, na.rm = TRUE))
+```
+
+Imputasi data langsung ke dataframenya
+
+```{r}
+data2 <- data
+
+data2$sleep_rem <- impute(data$sleep_rem, median)
+
+jumlahMissing(data2)
+```
+
+
+
+# Handle Outlier
+
+Salah satu identifikasi outlier paling cepat menggunakan boxplot
+
+```{r}
+data %>%
+    ggplot(aes(y=bodywt)) +
+    geom_boxplot()
+```
+
+
+## Menggunakan Z Score
+
+Menghitung zscore, jika nilainya lebih kecil dari -3 dan lebih besar dari 3 maka termasuk outlier
+
+```{r}
+bodywt_data <- data %>%
+  mutate(
+    zcore_bodywt = (bodywt - mean(bodywt)) / sd(bodywt),
+    bodywt_is_outlier = zcore_bodywt < -3 | zcore_bodywt > 3
+  ) %>%
+  select(name, contains("bodywt")) %>%
+  arrange(desc(bodywt_is_outlier)) 
+
+bodywt_data
+```
+
+Untuk menghapus yang outlier bisa menggunakan fungsi filter
+
+```{r}
+bodywt_data %>% filter(bodywt_is_outlier == FALSE)
+```
+
+Jika ingin mereplacenya bisa menggunakan cara berikut
+
+```{r}
+removed_outlier <- ifelse(bodywt_data$bodywt_is_outlier, NA, bodywt_data$bodywt)
+bodywt_data$bodywt <- impute(removed_outlier, mean)
+bodywt_data
+```
+
+
+## Menggunakan IQR
+
+```{r}
+iqr <- IQR(data$bodywt, na.rm=TRUE)
+q <- quantile(data$bodywt, na.rm=TRUE, c(0.25, 0.5, 0.75))
+
+bodywt_data2 <- data %>%
+  mutate(
+    bodywt_is_outlier= (bodywt < (q[1] - iqr * 1.5)) | (bodywt > (q[3] + iqr * 1.5))
+  ) %>%
+  select(name, contains("bodywt")) %>%
+  arrange(desc(bodywt_is_outlier)) 
+
+bodywt_data2
+```
+
+
+Cara handle sama seperti ketika menggunakan z-score. Sebagai contoh jika ingin menghapusnya
+
+```{r}
+bodywt_data2 %>%
+  filter(bodywt_is_outlier == FALSE)
+```
+
+
